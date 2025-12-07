@@ -1,0 +1,138 @@
+name: Build sing-box (Windows & Linux)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sing_box_repo:
+        description: 'sing-box repository'
+        required: true
+        default: 'reF1nd/sing-box'
+      sing_box_branch:
+        description: 'sing-box branch'
+        required: true
+        default: 'reF1nd-dev'
+      version_name:
+        description: 'Version name (e.g. 1.13.0-alpha.27.reF1nd)'
+        required: true
+        default: ''
+      build_tags:
+        description: 'Build tags (comma-separated)'
+        required: false
+        default: 'with_acme,with_ccm,with_clash_api,with_dhcp,with_gvisor,with_quic,with_tailscale,with_utls,with_wireguard,badlinkname,tfogo_checklinkname0'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            goamd64: v3
+            output_name: sing-box-windows-amd64v3
+            ext: .exe
+          - goos: linux
+            goarch: amd64
+            goamd64: v3
+            output_name: sing-box-linux-amd64v3
+            ext: ''
+
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Clone sing-box
+        run: |
+          git clone -b ${{ github.event.inputs.sing_box_branch }} \
+            https://github.com/${{ github.event.inputs.sing_box_repo }}.git \
+            sing-box
+          cd sing-box
+          git fetch --tags https://github.com/SagerNet/sing-box.git --force
+
+      - name: Get version info
+        id: version
+        run: |
+          cd sing-box
+          VERSION="${{ github.event.inputs.version_name }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(git describe --tags --always)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Build sing-box
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOAMD64: ${{ matrix.goamd64 }}
+        run: |
+          cd sing-box
+          
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          git tag -f "v${VERSION}" 2>/dev/null || true
+          TAGS=$(echo "${{ github.event.inputs.build_tags }}" | tr ',' ' ')
+          
+          echo "Building with tags: $TAGS"
+          echo "GOOS=$GOOS GOARCH=$GOARCH"
+          
+          go build -v -trimpath \
+            -tags "$TAGS" \
+            -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=${VERSION}" \
+            -o ../sing-box${{ matrix.ext }} \
+            ./cmd/sing-box
+
+      - name: Package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE_NAME="${{ matrix.output_name }}-${VERSION}"
+          
+          mkdir -p release
+          
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip -j "release/${ARCHIVE_NAME}.zip" sing-box${{ matrix.ext }}
+          else
+            tar -czvf "release/${ARCHIVE_NAME}.tar.gz" sing-box${{ matrix.ext }}
+          fi
+          
+          mv sing-box${{ matrix.ext }} "release/${{ matrix.output_name }}${{ matrix.ext }}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output_name }}-${{ steps.version.outputs.version }}
+          path: release/*
+
+  combine:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Organize release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "sing-box*" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Upload combined release
+        uses: actions/upload-artifact@v4
+        with:
+          name: sing-box-${{ github.event.inputs.version_name }}
+          path: release/*
+
+      - name: Delete individual artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: |
+            sing-box-windows-amd64v3-*
+            sing-box-linux-amd64v3-*
