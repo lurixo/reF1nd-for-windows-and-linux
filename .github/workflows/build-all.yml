@@ -53,7 +53,7 @@ jobs:
           mkdir -p dist
           go build -v -trimpath -o dist/sing-box${{ matrix.ext }} \
             -tags "${TAGS}" \
-            -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0' \
+            -ldflags '-s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0' \
             ./cmd/sing-box
         env:
           CGO_ENABLED: '0'
@@ -75,8 +75,6 @@ jobs:
   build_android:
     name: Build Android
     runs-on: ubuntu-latest
-    env:
-      ANDROID_NDK_VERSION: "28.0.13004108"
     steps:
       - name: Checkout sing-box-for-android
         uses: actions/checkout@v4
@@ -99,10 +97,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android NDK
-        run: |
-          sdkmanager --install "ndk;$ANDROID_NDK_VERSION"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> $GITHUB_ENV
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
 
       - name: Clone sing-box
         run: |
@@ -114,8 +113,8 @@ jobs:
 
       - name: Install gomobile
         run: |
-          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.8
-          go install github.com/sagernet/gomobile/cmd/gobind@v0.1.8
+          cd sing-box
+          make lib_install
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Build libbox.aar
@@ -126,12 +125,28 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
           git tag -f "v${VERSION}"
           
+          go mod edit -replace github.com/sagernet/sing-box=./
+          go mod tidy
+          
           go run ./cmd/internal/build_libbox -target android
           
           mkdir -p ../sing-box-for-android/app/libs
           cp libbox.aar ../sing-box-for-android/app/libs/
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: Build APK (unsigned)
+      - name: Update package name
+        run: |
+          cd sing-box-for-android
+          sed -i '/applicationId/s/io\.nekohasekai\.sfa/io.quic_go.sfa/' app/build.gradle
+          echo "=== applicationId check ==="
+          grep "applicationId" app/build.gradle
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.RELEASE_KEYSTORE_FILE }}" | base64 -d > sing-box-for-android/app/release.keystore
+
+      - name: Build APK (signed release)
         run: |
           cd sing-box-for-android
           
@@ -142,12 +157,20 @@ jobs:
           echo "VERSION_CODE=$VERSION_CODE" >> version.properties
           
           chmod +x gradlew
-          ./gradlew :app:assembleOtherRelease
+          
+          ./gradlew :app:assembleOtherRelease \
+            -Pandroid.injected.build.abi.filters=arm64-v8a \
+            -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
+            -Pandroid.injected.signing.store.password="${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.RELEASE_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.RELEASE_KEY_PASSWORD }}"
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Rename APK
         run: |
           cd sing-box-for-android/app/build/outputs/apk/other/release
-          for apk in *.apk; do
+          for apk in *arm64-v8a*.apk; do
             mv "$apk" "SFA-${{ github.event.inputs.version }}-${apk#*-}"
           done
 
@@ -155,7 +178,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: sing-box-for-android/app/build/outputs/apk/other/release/*-arm64-v8a.apk
+          path: sing-box-for-android/app/build/outputs/apk/other/release/*arm64-v8a*.apk
 
   combine:
     name: Combine artifacts
