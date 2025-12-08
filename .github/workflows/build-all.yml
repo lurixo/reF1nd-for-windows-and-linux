@@ -135,10 +135,11 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: Update package name
+      - name: Update package name and ABI filter
         run: |
           cd sing-box-for-android
           sed -i '/applicationId/s/io\.nekohasekai\.sfa/io.quic_go.sfa/' app/build.gradle
+          sed -i '/defaultConfig {/a\        ndk {\n            abiFilters "arm64-v8a"\n        }' app/build.gradle
 
       - name: Decode Keystore
         run: |
@@ -157,7 +158,6 @@ jobs:
           chmod +x gradlew
           
           ./gradlew :app:assembleOtherRelease \
-            -Pandroid.injected.build.abi.filters=arm64-v8a \
             -Pandroid.injected.signing.store.file=$(pwd)/app/release.keystore \
             -Pandroid.injected.signing.store.password="${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
             -Pandroid.injected.signing.key.alias="${{ secrets.RELEASE_KEY_ALIAS }}" \
@@ -168,7 +168,7 @@ jobs:
       - name: Rename APK
         run: |
           cd sing-box-for-android/app/build/outputs/apk/other/release
-          APK_FILE=$(ls *arm64-v8a*.apk | head -n 1)
+          APK_FILE=$(ls *.apk | head -n 1)
           TARGET_NAME="SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
           if [ -n "$APK_FILE" ]; then
             if [ "$APK_FILE" != "$TARGET_NAME" ]; then
@@ -178,7 +178,7 @@ jobs:
               echo "APK already has correct name: $APK_FILE"
             fi
           else
-            echo "No APK matching pattern found!"
+            echo "No APK found!"
             exit 1
           fi
 
