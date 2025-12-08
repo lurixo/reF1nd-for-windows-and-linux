@@ -165,20 +165,23 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
-      - name: Rename APK
+      - name: Rename APK and Cleanup
         run: |
           cd sing-box-for-android/app/build/outputs/apk/other/release
+          
+          # 1. 强制删除所有文件名中不包含 "arm64-v8a" 的 APK 文件
+          find . -type f -name "*.apk" ! -name "*arm64-v8a*" -delete
+          
+          # 2. 此时目录下应该只剩下一个 arm64 的 APK，将其重命名
           APK_FILE=$(ls *.apk | head -n 1)
           TARGET_NAME="SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
+          
           if [ -n "$APK_FILE" ]; then
-            if [ "$APK_FILE" != "$TARGET_NAME" ]; then
-              mv "$APK_FILE" "$TARGET_NAME"
-              echo "Renamed $APK_FILE to $TARGET_NAME"
-            else
-              echo "APK already has correct name: $APK_FILE"
-            fi
+            mv "$APK_FILE" "$TARGET_NAME"
+            echo "Renamed $APK_FILE to $TARGET_NAME"
           else
-            echo "No APK found!"
+            echo "Error: No arm64-v8a APK found!"
+            ls -R
             exit 1
           fi
 
