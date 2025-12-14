@@ -50,7 +50,6 @@ jobs:
       - name: Create platform stub for binary build
         run: |
           cd sing-box
-          # 检查是否存在 libbox/platform 目录，如果不存在则创建 stub
           if [ ! -d "experimental/libbox/platform" ]; then
             mkdir -p experimental/libbox/platform
             cat > experimental/libbox/platform/interface.go << 'EOF'
@@ -91,12 +90,6 @@ jobs:
     name: Build Android
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout sing-box-for-android
-        uses: actions/checkout@v4
-        with:
-          repository: SagerNet/sing-box-for-android
-          path: sing-box-for-android
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -118,9 +111,11 @@ jobs:
         with:
           ndk-version: r28
 
-      - name: Clone sing-box
+      # 关键：使用 --recurse-submodules 来获取 clients/android 子模块
+      - name: Clone sing-box with submodules
         run: |
           git clone -b ${{ github.event.inputs.sing_box_branch }} \
+            --recurse-submodules \
             https://github.com/${{ github.event.inputs.sing_box_repo }}.git \
             sing-box
           cd sing-box
@@ -142,25 +137,28 @@ jobs:
           cd sing-box
           export PATH="$PATH:$(go env GOPATH)/bin"
           make lib_android
-          
-          mkdir -p ../sing-box-for-android/app/libs
-          cp libbox.aar ../sing-box-for-android/app/libs/
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
+      - name: Prepare Android client
+        run: |
+          cd sing-box
+          mkdir -p clients/android/app/libs
+          cp libbox.aar clients/android/app/libs/
+
       - name: Update package name and ABI filter
         run: |
-          cd sing-box-for-android
+          cd sing-box/clients/android
           sed -i '/applicationId/s/io\.nekohasekai\.sfa/io.quic_go.sfa/' app/build.gradle
           sed -i '/defaultConfig {/a\        ndk {\n            abiFilters "arm64-v8a"\n        }' app/build.gradle
 
       - name: Decode Keystore
         run: |
-          echo "${{ secrets.RELEASE_KEYSTORE_FILE }}" | base64 -d > sing-box-for-android/app/release.keystore
+          echo "${{ secrets.RELEASE_KEYSTORE_FILE }}" | base64 -d > sing-box/clients/android/app/release.keystore
 
       - name: Build APK (signed release)
         run: |
-          cd sing-box-for-android
+          cd sing-box/clients/android
           
           VERSION="${{ github.event.inputs.version }}"
           VERSION_CODE=$(date +%Y%m%d%H)
@@ -180,9 +178,9 @@ jobs:
 
       - name: Rename APK and Cleanup
         run: |
-          cd sing-box-for-android/app/build/outputs/apk/other/release
-          find . -type f -name "*.apk" ! -name "*arm64-v8a*" -delete
-          APK_FILE=$(ls *arm64-v8a*.apk | head -n 1)
+          cd sing-box/clients/android/app/build/outputs/apk/other/release
+          find . -type f -name "*.apk" ! -name "*arm64-v8a*" -delete 2>/dev/null || true
+          APK_FILE=$(ls *arm64-v8a*.apk 2>/dev/null | head -n 1 || ls *.apk 2>/dev/null | head -n 1)
           TARGET_NAME="SFA-${{ github.event.inputs.version }}-foss-arm64-v8a.apk"
           if [ -n "$APK_FILE" ]; then
             if [ "$APK_FILE" != "$TARGET_NAME" ]; then
@@ -192,8 +190,8 @@ jobs:
               echo "APK already has correct name: $APK_FILE"
             fi
           else
-            echo "Error: No arm64-v8a APK found!"
-            ls -R
+            echo "Error: No APK found!"
+            ls -la
             exit 1
           fi
 
@@ -201,7 +199,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: sing-box-for-android/app/build/outputs/apk/other/release/*.apk
+          path: sing-box/clients/android/app/build/outputs/apk/other/release/*.apk
 
   publish:
     name: Publish Release
