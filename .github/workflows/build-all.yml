@@ -31,7 +31,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.4
+          go-version: ^1.25.5
           cache: false
 
       - name: Clone sing-box
@@ -46,6 +46,21 @@ jobs:
         run: |
           cd sing-box
           git tag v${{ github.event.inputs.version }} -f
+
+      - name: Create platform stub for binary build
+        run: |
+          cd sing-box
+          # 检查是否存在 libbox/platform 目录，如果不存在则创建 stub
+          if [ ! -d "experimental/libbox/platform" ]; then
+            mkdir -p experimental/libbox/platform
+            cat > experimental/libbox/platform/interface.go << 'EOF'
+          //go:build !android && !ios
+
+          package platform
+
+          type Interface interface{}
+          EOF
+          fi
 
       - name: Build
         run: |
@@ -91,7 +106,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.4
+          go-version: ^1.25.5
           cache: false
 
       - name: Setup Android SDK
@@ -111,6 +126,11 @@ jobs:
           cd sing-box
           git fetch --tags https://github.com/SagerNet/sing-box.git --force
 
+      - name: Set tag
+        run: |
+          cd sing-box
+          git tag v${{ github.event.inputs.version }} -f
+
       - name: Install gomobile
         run: |
           cd sing-box
@@ -120,15 +140,8 @@ jobs:
       - name: Build libbox.aar
         run: |
           cd sing-box
-          gomobile init
-          
-          VERSION="${{ github.event.inputs.version }}"
-          git tag -f "v${VERSION}"
-          
-          go mod edit -replace github.com/sagernet/sing-box=./
-          go mod tidy
-          
-          go run ./cmd/internal/build_libbox -target android
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make lib_android
           
           mkdir -p ../sing-box-for-android/app/libs
           cp libbox.aar ../sing-box-for-android/app/libs/
