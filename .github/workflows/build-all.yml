@@ -25,8 +25,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - { os: windows, arch: amd64, goamd64: v3, ext: .exe }
-          - { os: linux, arch: amd64, goamd64: v3, ext: '' }
+          - { os: windows, arch: amd64, goamd64: v3, ext: .exe, cgo: '0' }
+          - { os: linux, arch: amd64, goamd64: v3, ext: '', cgo: '0' }
+          - { os: linux, arch: amd64, goamd64: v3, ext: '', cgo: '1', variant: glibc }
     steps:
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -56,7 +57,7 @@ jobs:
             -ldflags '-s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0' \
             ./cmd/sing-box
         env:
-          CGO_ENABLED: '0'
+          CGO_ENABLED: ${{ matrix.cgo }}
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           GOAMD64: ${{ matrix.goamd64 }}
@@ -64,12 +65,18 @@ jobs:
       - name: Rename
         run: |
           cd sing-box/dist
-          mv sing-box${{ matrix.ext }} sing-box-${{ github.event.inputs.version }}-${{ matrix.os }}-${{ matrix.arch }}v3${{ matrix.ext }}
+          VARIANT="${{ matrix.variant }}"
+          if [ -n "$VARIANT" ]; then
+            SUFFIX="-${VARIANT}"
+          else
+            SUFFIX=""
+          fi
+          mv sing-box${{ matrix.ext }} sing-box-${{ github.event.inputs.version }}-${{ matrix.os }}-${{ matrix.arch }}v3${SUFFIX}${{ matrix.ext }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ matrix.os }}-${{ matrix.arch }}v3
+          name: binary-${{ matrix.os }}-${{ matrix.arch }}v3${{ matrix.variant && format('-{0}', matrix.variant) || '' }}
           path: sing-box/dist/*
 
   build_android:
