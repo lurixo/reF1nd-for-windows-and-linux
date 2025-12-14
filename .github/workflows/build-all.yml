@@ -124,12 +124,13 @@ jobs:
   build_android:
     name: Build Android
     runs-on: ubuntu-latest
+    env:
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
     steps:
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+      - name: Setup OpenJDK
+        run: |
+          sudo apt update && sudo apt install -y openjdk-17-jdk-headless
+          java --version
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -184,7 +185,6 @@ jobs:
           export TAGS="with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_naive_outbound"
           gomobile bind -v -androidapi 21 -javapkg=io.nekohasekai -libname=box -tags="$TAGS" -ldflags="-X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -buildid= -checklinkname=0" ./experimental/libbox
         env:
-          JAVA_HOME: ${{ env.JAVA_HOME }}
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Verify libbox.aar
@@ -230,7 +230,6 @@ jobs:
             -Pandroid.injected.signing.key.alias="${{ secrets.RELEASE_KEY_ALIAS }}" \
             -Pandroid.injected.signing.key.password="${{ secrets.RELEASE_KEY_PASSWORD }}"
         env:
-          JAVA_HOME: ${{ env.JAVA_HOME }}
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Rename APK
