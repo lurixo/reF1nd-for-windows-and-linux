@@ -102,16 +102,12 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: windows
           GOARCH: amd64
+          GOAMD64: v3
 
-      - name: Archive
+      - name: Rename
         run: |
           cd sing-box/dist
-          $DIR_NAME = "sing-box-${{ github.event.inputs.version }}-windows-amd64v3"
-          mkdir $DIR_NAME
-          Copy-Item "sing-box.exe" $DIR_NAME
-          Compress-Archive -Path $DIR_NAME -DestinationPath "$DIR_NAME.zip"
-          Remove-Item -Recurse $DIR_NAME
-          Remove-Item sing-box.exe
+          Rename-Item -Path "sing-box.exe" -NewName "sing-box-${{ github.event.inputs.version }}-windows-amd64v3.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
