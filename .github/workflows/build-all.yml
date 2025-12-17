@@ -125,7 +125,7 @@ jobs:
         run: |
           $TAGS = "${{ env.TAGS_BASE }},with_purego"
           cd sing-box
-          mkdir -p dist
+          New-Item -ItemType Directory -Force -Path dist
           go build -v -trimpath -o dist/sing-box.exe -tags "$TAGS" `
             -ldflags "-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ github.event.inputs.version }} -checklinkname=0" `
             ./cmd/sing-box
@@ -136,21 +136,19 @@ jobs:
 
       - name: Extract libcronet.dll
         run: |
-          cd sing-box
-          $CRONET_GO_VERSION = Get-Content .github/CRONET_GO_VERSION
           $env:CGO_ENABLED = "0"
-          go run -v "github.com/sagernet/cronet-go/cmd/build-naive@$CRONET_GO_VERSION" extract-lib --target windows/amd64 -o dist
+          go run -v "github.com/sagernet/cronet-go/cmd/build-naive@latest" extract-lib --target windows/amd64 -o sing-box/dist
 
       - name: Archive
         run: |
           cd sing-box/dist
           $DIR_NAME = "sing-box-${{ github.event.inputs.version }}-windows-amd64v3"
-          mkdir $DIR_NAME
+          New-Item -ItemType Directory -Force -Path $DIR_NAME
           Copy-Item "sing-box.exe" $DIR_NAME
           Copy-Item "libcronet.dll" $DIR_NAME
           Compress-Archive -Path $DIR_NAME -DestinationPath "$DIR_NAME.zip"
-          Remove-Item -Recurse $DIR_NAME
-          Remove-Item sing-box.exe, libcronet.dll
+          Remove-Item -Recurse -Force $DIR_NAME
+          Remove-Item -Force sing-box.exe, libcronet.dll
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
