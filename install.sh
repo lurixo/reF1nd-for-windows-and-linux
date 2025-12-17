@@ -56,17 +56,7 @@ case "$(uname -m)" in
   i386|i686)      arch="386" ;;
 esac
 
-# Detect libc (for Linux)
-libc_suffix=""
-if [ "$os" = "linux" ]; then
-  if ldd --version 2>&1 | grep -qi "musl"; then
-    libc_suffix="-musl"
-  else
-    libc_suffix="-glibc"
-  fi
-fi
-
-echo "Detected: ${os}-${arch}${libc_suffix}"
+echo "Detected: ${os}-${arch}"
 
 if [ "$os" = "unknown" ] || [ "$arch" = "unknown" ]; then
   echo "Unsupported platform: ${os}-${arch}"
@@ -100,12 +90,13 @@ fi
 echo "Version: $download_version"
 
 # Build download URL
-suffix=""
+# Windows uses .zip archive, Linux/Darwin use bare binary
 if [ "$os" = "windows" ]; then
-  suffix=".exe"
+  filename="sing-box-${download_version}-${os}-${arch}.zip"
+else
+  filename="sing-box-${download_version}-${os}-${arch}"
 fi
 
-filename="sing-box-${download_version}-${os}-${arch}${libc_suffix}${suffix}"
 download_url="https://github.com/${REPO}/releases/download/v${download_version}/${filename}"
 
 echo "Downloading $download_url"
@@ -127,8 +118,18 @@ fi
 
 # Install binary
 echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
-mv "$tmp_file" "${INSTALL_DIR}/${BINARY_NAME}"
-chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+
+if [ "$os" = "windows" ]; then
+  # Extract from zip for Windows
+  tmp_dir=$(mktemp -d)
+  unzip -q "$tmp_file" -d "$tmp_dir"
+  mv "$tmp_dir/sing-box.exe" "${INSTALL_DIR}/${BINARY_NAME}.exe"
+  rm -rf "$tmp_dir" "$tmp_file"
+  chmod +x "${INSTALL_DIR}/${BINARY_NAME}.exe"
+else
+  mv "$tmp_file" "${INSTALL_DIR}/${BINARY_NAME}"
+  chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+fi
 
 # Create systemd service if systemd exists
 if [ -d "/etc/systemd/system" ]; then
