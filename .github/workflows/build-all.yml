@@ -208,25 +208,25 @@ jobs:
           mkdir -p sing-box-for-android/app/libs
           cp sing-box/libbox.aar sing-box-for-android/app/libs/
 
-      - name: Update package name and ABI filter
+      - name: Update ABI filter
         run: |
           cd sing-box-for-android
           if [ -f "app/build.gradle.kts" ]; then
             GRADLE_FILE="app/build.gradle.kts"
-            sed -i 's/applicationId\s*=\s*"io\.nekohasekai\.sfa"/applicationId = "io.quic_go.sfa"/' "$GRADLE_FILE"
+            sed -i 's/applicationId\s*=\s*"io\.nekohasekai\.sfa"/applicationId = "io.reF1nd.sfa"/' "$GRADLE_FILE"
             if ! grep -q "abiFilters" "$GRADLE_FILE"; then
               sed -i '/defaultConfig {/a\        ndk {\n            abiFilters.add("arm64-v8a")\n        }' "$GRADLE_FILE"
             fi
           elif [ -f "app/build.gradle" ]; then
             GRADLE_FILE="app/build.gradle"
-            sed -i '/applicationId/s/io\.nekohasekai\.sfa/io.quic_go.sfa/' "$GRADLE_FILE"
+            sed -i '/applicationId/s/io\.nekohasekai\.sfa/io.reF1nd.sfa/' "$GRADLE_FILE"
             sed -i '/defaultConfig {/a\        ndk {\n            abiFilters "arm64-v8a"\n        }' "$GRADLE_FILE"
           else
             echo "Error: No build.gradle or build.gradle.kts found!"
             ls -la app/
             exit 1
           fi
-          echo "Package name and ABI filter updated:"
+          echo "ABI filter updated:"
           grep -E "applicationId|abiFilters" "$GRADLE_FILE" || true
 
       - name: Update version
